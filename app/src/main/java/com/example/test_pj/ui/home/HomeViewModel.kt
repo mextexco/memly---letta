@@ -90,11 +90,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _uiState.value = HomeUiState.Saving
             try {
-                mem0Api.addMemory(text, userId)
+                val categorized = mem0Api.addMemoryReliable(text, userId)
                 _inputText.value = ""
                 // カウントを即時更新（FlowはuserIdが変化しないと再発火しないため手動で取得）
                 try { _memoryCount.value = mem0Api.getMemories(userId).size } catch (_: Exception) {}
-                _uiState.value = HomeUiState.Saved("記憶しました ✓")
+                _uiState.value = HomeUiState.Saved(if (categorized) "記憶しました ✓" else "記憶しました ✓（分類は未対応）")
                 delay(2500)
                 _uiState.value = HomeUiState.Idle
             } catch (e: Exception) {

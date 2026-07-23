@@ -1,6 +1,7 @@
 package com.example.test_pj.data.mem0
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -13,7 +14,9 @@ import java.io.IOException
 
 class Mem0Api(private val apiKey: String) {
 
-    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true }
+    // encodeDefaults=trueが無いと、infer=false(デフォルト値)がJSONから省略され、
+    // mem0側のデフォルト(infer=true)にフォールバックしてメモが非同期破棄される。
+    private val json = Json { ignoreUnknownKeys = true; coerceInputValues = true; encodeDefaults = true }
     private val jsonMediaType = "application/json".toMediaType()
     private val baseUrl = "https://api.mem0.ai"
 
@@ -30,14 +33,32 @@ class Mem0Api(private val apiKey: String) {
         }
         .build()
 
-    /** 記憶を追加 */
-    suspend fun addMemory(content: String, userId: String) = withContext(Dispatchers.IO) {
+    /** 記憶を追加。infer=trueはAIによるカテゴリ分類ありだが、mem0側の非同期処理が
+     *  まれにPENDINGのまま完了せず記憶が失われることがある（addMemoryReliable参照）。 */
+    suspend fun addMemory(content: String, userId: String, infer: Boolean = true) = withContext(Dispatchers.IO) {
         val body = json.encodeToString(
-            AddMemoryRequest(messages = listOf(MemoryMessage("user", content)), userId = userId)
+            AddMemoryRequest(messages = listOf(MemoryMessage("user", content)), userId = userId, infer = infer)
         ).toRequestBody(jsonMediaType)
 
         Request.Builder().url("$baseUrl/v1/memories/").post(body).build()
             .execute { if (!it.isSuccessful) throw IOException("API error ${it.code}: ${it.body?.string()}") }
+    }
+
+    /** infer=trueで保存を試み、数秒待って反映を確認。反映されていなければinfer=falseで
+     *  生保存し直し、確実に記憶が残るようにする（カテゴリは付かない）。
+     *  戻り値はカテゴリ分類ありで保存できたか。 */
+    suspend fun addMemoryReliable(content: String, userId: String): Boolean {
+        addMemory(content, userId, infer = true)
+        delay(4000)
+        val landed = try {
+            getMemories(userId).any { it.memory == content }
+        } catch (_: Exception) {
+            false
+        }
+        if (!landed) {
+            addMemory(content, userId, infer = false)
+        }
+        return landed
     }
 
     /** 全記憶を取得 */
