@@ -13,6 +13,9 @@ data class MemoryMessage(
 data class AddMemoryRequest(
     val messages: List<MemoryMessage>,
     @SerialName("user_id") val userId: String,
+    // mem0のadd APIはデフォルトinfer=true（LLMが記憶に値するか判定→短いメモは破棄され非同期でPENDINGのまま保存されない）。
+    // memlyはユーザーが入力したメモをそのまま保存したいので、infer=falseで同期・生保存にする。
+    val infer: Boolean = false,
 )
 
 @Serializable
