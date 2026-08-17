@@ -49,7 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.test_pj.data.mem0.Memory
+import com.example.test_pj.data.memory.MemoryItem
 import com.example.test_pj.theme.ErrorRed
 
 @Composable
@@ -155,6 +155,7 @@ fun MemoryListScreen(
                         items(s.memories, key = { it.id }) { memory ->
                             MemoryCard(
                                 memory = memory,
+                                canEdit = viewModel.supportsEdit,
                                 onEdit = { viewModel.startEdit(memory) },
                                 onDelete = { viewModel.startDelete(memory) },
                             )
@@ -167,7 +168,7 @@ fun MemoryListScreen(
 
     // ── 編集ダイアログ ─────────────────────────────
     editingMemory?.let { memory ->
-        var editText by remember(memory.id) { mutableStateOf(memory.memory) }
+        var editText by remember(memory.id) { mutableStateOf(memory.text) }
         AlertDialog(
             onDismissRequest = viewModel::cancelEdit,
             containerColor = MaterialTheme.colorScheme.surface,
@@ -211,7 +212,7 @@ fun MemoryListScreen(
             title = { Text("削除しますか？", fontFamily = FontFamily.Monospace, color = ErrorRed) },
             text = {
                 Text(
-                    "「${memory.memory.take(40)}${if (memory.memory.length > 40) "…" else ""}」\nを削除します。元に戻せません。",
+                    "「${memory.text.take(40)}${if (memory.text.length > 40) "…" else ""}」\nを削除します。元に戻せません。",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
@@ -250,7 +251,7 @@ fun MemoryListScreen(
 }
 
 @Composable
-private fun MemoryCard(memory: Memory, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun MemoryCard(memory: MemoryItem, canEdit: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -259,7 +260,7 @@ private fun MemoryCard(memory: Memory, onEdit: () -> Unit, onDelete: () -> Unit)
     ) {
         Column(modifier = Modifier.padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 8.dp)) {
             Text(
-                text = memory.memory,
+                text = memory.text,
                 color = MaterialTheme.colorScheme.onSurface,
                 fontFamily = FontFamily.Monospace,
                 fontSize = 14.sp, lineHeight = 22.sp,
@@ -278,8 +279,11 @@ private fun MemoryCard(memory: Memory, onEdit: () -> Unit, onDelete: () -> Unit)
                     }
                 }
                 Row {
-                    IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Edit, "編集", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                    // 更新 API を持たないバックエンド（Letta）では編集ボタンを出さない
+                    if (canEdit) {
+                        IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.Edit, "編集", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                        }
                     }
                     IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.Delete, "削除", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))

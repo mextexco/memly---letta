@@ -3,8 +3,7 @@ package com.example.test_pj.ui.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.test_pj.BuildConfig
-import com.example.test_pj.data.mem0.Mem0Api
+import com.example.test_pj.data.memory.MemoryBackends
 import com.example.test_pj.data.user.UserInfo
 import com.example.test_pj.data.user.UserRepository
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -27,7 +26,7 @@ sealed interface HomeUiState {
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val mem0Api = Mem0Api(BuildConfig.MEM0_API_KEY)
+    private val memories = MemoryBackends.current
     private val userRepository = UserRepository(app)
 
     val userInfo: StateFlow<UserInfo> = userRepository.userInfo
@@ -53,7 +52,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 .distinctUntilChanged()
                 .collect { userId ->
                     try {
-                        _memoryCount.value = mem0Api.getMemories(userId).size
+                        _memoryCount.value = memories.list(userId).size
                     } catch (_: Exception) {}
                 }
         }
@@ -90,10 +89,10 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _uiState.value = HomeUiState.Saving
             try {
-                val categorized = mem0Api.addMemoryReliable(text, userId)
+                val categorized = memories.add(text, userId)
                 _inputText.value = ""
                 // カウントを即時更新（FlowはuserIdが変化しないと再発火しないため手動で取得）
-                try { _memoryCount.value = mem0Api.getMemories(userId).size } catch (_: Exception) {}
+                try { _memoryCount.value = memories.list(userId).size } catch (_: Exception) {}
                 _uiState.value = HomeUiState.Saved(if (categorized) "記憶しました ✓" else "記憶しました ✓（分類は未対応）")
                 delay(2500)
                 _uiState.value = HomeUiState.Idle

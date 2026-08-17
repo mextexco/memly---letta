@@ -22,6 +22,13 @@ android {
         versionName = "1.0"
         buildConfigField("String", "MEM0_API_KEY", "\"${localProperties["MEM0_API_KEY"] ?: ""}\"")
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${localProperties["GOOGLE_WEB_CLIENT_ID"] ?: ""}\"")
+
+        // 記憶バックエンドの切り替え: "mem0"（既定, クラウド）/ "letta"（セルフホスト）
+        buildConfigField("String", "MEMORY_BACKEND", "\"${localProperties["MEMORY_BACKEND"] ?: "mem0"}\"")
+        buildConfigField("String", "LETTA_BASE_URL", "\"${localProperties["LETTA_BASE_URL"] ?: "http://localhost:8283"}\"")
+        buildConfigField("String", "LETTA_AGENT_ID", "\"${localProperties["LETTA_AGENT_ID"] ?: ""}\"")
+        // Letta Cloud を使う場合のみ。セルフホストでは空でよい。
+        buildConfigField("String", "LETTA_TOKEN", "\"${localProperties["LETTA_TOKEN"] ?: ""}\"")
     }
 
     buildTypes {

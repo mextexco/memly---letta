@@ -3,9 +3,8 @@ package com.example.test_pj.ui.memories
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.test_pj.BuildConfig
-import com.example.test_pj.data.mem0.Mem0Api
-import com.example.test_pj.data.mem0.Memory
+import com.example.test_pj.data.memory.MemoryBackends
+import com.example.test_pj.data.memory.MemoryItem
 import com.example.test_pj.data.user.UserRepository
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,15 +18,18 @@ import kotlinx.coroutines.launch
 
 sealed interface MemoryListUiState {
     data object Loading : MemoryListUiState
-    data class Success(val memories: List<Memory>) : MemoryListUiState
+    data class Success(val memories: List<MemoryItem>) : MemoryListUiState
     data class Error(val message: String) : MemoryListUiState
 }
 
 @OptIn(FlowPreview::class)
 class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val mem0Api = Mem0Api(BuildConfig.MEM0_API_KEY)
+    private val backend = MemoryBackends.current
     private val userRepository = UserRepository(app)
+
+    /** バックエンドが編集に対応しているか。UI 側の編集ボタン表示に使う。 */
+    val supportsEdit: Boolean = backend.supportsEdit
 
     private val _uiState = MutableStateFlow<MemoryListUiState>(MemoryListUiState.Loading)
     val uiState: StateFlow<MemoryListUiState> = _uiState.asStateFlow()
@@ -36,11 +38,11 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     // 編集・削除ダイアログ制御
-    private val _editingMemory = MutableStateFlow<Memory?>(null)
-    val editingMemory: StateFlow<Memory?> = _editingMemory.asStateFlow()
+    private val _editingMemory = MutableStateFlow<MemoryItem?>(null)
+    val editingMemory: StateFlow<MemoryItem?> = _editingMemory.asStateFlow()
 
-    private val _deletingMemory = MutableStateFlow<Memory?>(null)
-    val deletingMemory: StateFlow<Memory?> = _deletingMemory.asStateFlow()
+    private val _deletingMemory = MutableStateFlow<MemoryItem?>(null)
+    val deletingMemory: StateFlow<MemoryItem?> = _deletingMemory.asStateFlow()
 
     private val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
@@ -62,13 +64,13 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ── 編集 ───────────────────────────────────────
-    fun startEdit(memory: Memory) { _editingMemory.value = memory }
+    fun startEdit(memory: MemoryItem) { _editingMemory.value = memory }
     fun cancelEdit() { _editingMemory.value = null }
 
     fun confirmEdit(id: String, newText: String) {
         viewModelScope.launch {
             try {
-                mem0Api.updateMemory(id, newText)
+                backend.update(id, newText)
                 _editingMemory.value = null
                 refresh()
             } catch (e: Exception) {
@@ -78,13 +80,13 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     // ── 削除 ───────────────────────────────────────
-    fun startDelete(memory: Memory) { _deletingMemory.value = memory }
+    fun startDelete(memory: MemoryItem) { _deletingMemory.value = memory }
     fun cancelDelete() { _deletingMemory.value = null }
 
     fun confirmDelete(id: String) {
         viewModelScope.launch {
             try {
-                mem0Api.deleteMemory(id)
+                backend.delete(id)
                 _deletingMemory.value = null
                 refresh()
             } catch (e: Exception) {
@@ -101,7 +103,7 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = MemoryListUiState.Loading
             try {
                 val userId = userRepository.userInfo.first().mem0UserId
-                _uiState.value = MemoryListUiState.Success(mem0Api.getMemories(userId))
+                _uiState.value = MemoryListUiState.Success(backend.list(userId))
             } catch (e: Exception) {
                 _uiState.value = MemoryListUiState.Error(e.message ?: "読み込み失敗")
             }
@@ -113,7 +115,7 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.value = MemoryListUiState.Loading
             try {
                 val userId = userRepository.userInfo.first().mem0UserId
-                _uiState.value = MemoryListUiState.Success(mem0Api.searchMemories(query, userId))
+                _uiState.value = MemoryListUiState.Success(backend.search(query, userId))
             } catch (e: Exception) {
                 _uiState.value = MemoryListUiState.Error(e.message ?: "検索失敗")
             }

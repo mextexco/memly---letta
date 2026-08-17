@@ -13,3 +13,8 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# 移行スクリプトの進捗記録
+.migrate_state.json
+__pycache__/
+*.pyc
