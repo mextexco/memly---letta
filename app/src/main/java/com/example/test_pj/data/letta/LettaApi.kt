@@ -145,11 +145,20 @@ class LettaApi(
 
     // ── archival memory（長期記憶の生データ） ─────────────
 
-    /** archival memory を新しい順に取得。埋め込みも返ってくるため limit 必須。 */
-    suspend fun listPassages(limit: Int = 100): List<Passage> = withContext(Dispatchers.IO) {
+    /**
+     * archival memory を新しい順に取得する。
+     *
+     * このエンドポイントは 1 件あたり 1536 次元の埋め込みベクトルも返し、除外パラメータが無い。
+     * 実測で **1 件およそ 40KB** あるため、全件取得すると 92 件で 3.7MB に達しモバイルでは実用にならない。
+     * 必ず [limit] で区切り、続きは前ページ末尾の id を [before] に渡して取得する。
+     *
+     * @param before このIDより古いものを返す。降順のページングはこれで行う（`after` は降順では機能しない）。
+     */
+    suspend fun listPassages(limit: Int = PAGE_SIZE, before: String? = null): List<Passage> = withContext(Dispatchers.IO) {
         val url = url("/v1/agents/$agentId/archival-memory").newBuilder()
             .addQueryParameter("limit", limit.toString())
             .addQueryParameter("ascending", "false")
+            .apply { if (before != null) addQueryParameter("before", before) }
             .build()
 
         Request.Builder().url(url).get().build().execute { response ->
@@ -179,4 +188,9 @@ class LettaApi(
 
     private fun <T> Request.execute(block: (okhttp3.Response) -> T): T =
         client.newCall(this).execute().use(block)
+
+    companion object {
+        /** 1 ページの件数。1 件約 40KB なので増やすと転送量が線形に増える。 */
+        const val PAGE_SIZE = 20
+    }
 }

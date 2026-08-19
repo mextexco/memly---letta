@@ -61,6 +61,8 @@ fun MemoryListScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val deletingMemory by viewModel.deletingMemory.collectAsStateWithLifecycle()
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
+    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
+    val loadingMore by viewModel.loadingMore.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -88,7 +90,7 @@ fun MemoryListScreen(
         if (uiState is MemoryListUiState.Success) {
             val count = (uiState as MemoryListUiState.Success).memories.size
             Text(
-                text = "合計 ${count}件",
+                text = if (hasMore) "読み込み済み ${count}件" else "合計 ${count}件",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(start = 8.dp),
@@ -131,6 +133,12 @@ fun MemoryListScreen(
                                 memory = memory,
                                 onDelete = { viewModel.startDelete(memory) },
                             )
+                        }
+                        // 1件約40KBあるため全件は取らない。続きは明示的に読む。
+                        if (hasMore) {
+                            item(key = "load-more") {
+                                LoadMoreButton(loading = loadingMore, onClick = viewModel::loadMore)
+                            }
                         }
                     }
                 }
@@ -233,4 +241,26 @@ private fun formatDate(isoDate: String): String = try {
         .format(instant)
 } catch (_: Exception) {
     isoDate.replace("T", " ").take(16)
+}
+
+/** 一覧の続きを 1 ページ読むボタン。転送量が大きいので自動ロードはしない。 */
+@Composable
+private fun LoadMoreButton(loading: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (loading) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary)
+        } else {
+            TextButton(onClick = onClick) {
+                Text(
+                    "もっと読み込む",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                )
+            }
+        }
+    }
 }

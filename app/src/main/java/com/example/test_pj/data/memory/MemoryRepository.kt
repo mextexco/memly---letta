@@ -31,9 +31,15 @@ class MemoryRepository(private val api: LettaApi) {
 
     suspend fun updateCoreMemory(label: String, value: String) = api.updateCoreBlock(label, value)
 
-    /** 溜まった長期記憶の生データ。 */
-    suspend fun archivedMemories(): List<MemoryItem> =
-        api.listPassages().map { MemoryItem(id = it.id, text = it.text, createdAt = it.createdAt) }
+    /**
+     * 溜まった長期記憶を新しい順に 1 ページ分だけ取得する。
+     * 続きは前ページ末尾の id を [before] に渡す。全件取得しないのは 1 件約 40KB あるため。
+     */
+    suspend fun archivedMemories(before: String? = null): List<MemoryItem> =
+        api.listPassages(before = before).map { MemoryItem(id = it.id, text = it.text, createdAt = it.createdAt) }
+
+    /** 1 ページの件数。UI 側が「まだ続きがあるか」を判断するのに使う。 */
+    val pageSize: Int get() = LettaApi.PAGE_SIZE
 
     suspend fun deleteArchived(id: String) = api.deletePassage(id)
 

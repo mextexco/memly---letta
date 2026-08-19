@@ -18,6 +18,9 @@ sealed interface MemoryListUiState {
 /**
  * 溜まった長期記憶（archival memory）を眺めて消すだけの画面。
  *
+ * 一覧は 1 ページずつ読む。Letta は passage に埋め込みベクトルを含めて返し除外できないため、
+ * 1 件約 40KB あり、全件取得すると 92 件で 3.7MB になってモバイルでは実用にならない。
+ *
  * 検索は「記憶に聞く」画面でエージェントにやらせるのでここには置かない。
  * 編集も Letta に更新 API が無く、書き換えはエージェントに任せる方針なので持たない。
  */
@@ -28,6 +31,14 @@ class MemoryListViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<MemoryListUiState>(MemoryListUiState.Loading)
     val uiState: StateFlow<MemoryListUiState> = _uiState.asStateFlow()
 
+    /** 追加読み込み中か。ボタンの二重押しを防ぐ。 */
+    private val _loadingMore = MutableStateFlow(false)
+    val loadingMore: StateFlow<Boolean> = _loadingMore.asStateFlow()
+
+    /** まだ続きがあるか。最後のページが 1 ページ分に満たなければ終端とみなす。 */
+    private val _hasMore = MutableStateFlow(false)
+    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+
     private val _deletingMemory = MutableStateFlow<MemoryItem?>(null)
     val deletingMemory: StateFlow<MemoryItem?> = _deletingMemory.asStateFlow()
 
@@ -36,13 +47,34 @@ class MemoryListViewModel : ViewModel() {
 
     init { refresh() }
 
+    /** 先頭ページを読み直す。追加読み込み済みの分は破棄される。 */
     fun refresh() {
         viewModelScope.launch {
             _uiState.value = MemoryListUiState.Loading
             try {
-                _uiState.value = MemoryListUiState.Success(memory.archivedMemories())
+                val page = memory.archivedMemories()
+                _hasMore.value = page.size >= memory.pageSize
+                _uiState.value = MemoryListUiState.Success(page)
             } catch (e: Exception) {
                 _uiState.value = MemoryListUiState.Error(e.message ?: "読み込み失敗")
+            }
+        }
+    }
+
+    /** 表示済みの末尾より古い分を 1 ページ追記する。 */
+    fun loadMore() {
+        val current = (_uiState.value as? MemoryListUiState.Success)?.memories ?: return
+        if (_loadingMore.value || !_hasMore.value || current.isEmpty()) return
+        viewModelScope.launch {
+            _loadingMore.value = true
+            try {
+                val page = memory.archivedMemories(before = current.last().id)
+                _hasMore.value = page.size >= memory.pageSize
+                _uiState.value = MemoryListUiState.Success(current + page)
+            } catch (e: Exception) {
+                _actionError.value = "追加読み込み失敗: ${e.message}"
+            } finally {
+                _loadingMore.value = false
             }
         }
     }
