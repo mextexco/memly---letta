@@ -1,7 +1,8 @@
 # Memly
 
 音声・テキストで日々の記憶を気軽に記録する Android アプリ。  
-バックエンドに [mem0](https://mem0.ai) を使い、AI が文脈を理解して記憶を管理します。
+記憶エンジンに自宅セルフホストの [Letta](https://letta.com) を使い、
+**何をどう覚えるかはエージェント自身が判断する**。
 
 ## スクリーンショット
 
@@ -13,9 +14,9 @@
 
 - 🎤 **音声入力** — Android 標準の音声認識でハンズフリー入力
 - ✍️ **テキスト入力** — キーボードでの直接入力にも対応
-- 🧠 **mem0 連携** — 記録した内容を AI が意味のある記憶として保存
-- 🔍 **検索** — キーワードで過去の記憶をセマンティック検索
-- ✏️ **編集・削除** — 記憶の修正・削除が可能
+- 🧠 **エージェントが記憶を管理** — 保存すると、統合するか新規に書くかをエージェントが自分で決める。何をしたかは画面に出る
+- 💬 **記憶に聞く** — 検索窓ではなく質問。エージェントが自分の記憶をたどって答える
+- 👤 **私の人物像** — エージェントが持つ core memory（human / persona）を覗ける
 - 👤 **Google サインイン** — アカウントでユーザーを識別
 - 📊 **ステータス表示** — 記憶の件数をホーム画面に表示
 
@@ -31,7 +32,7 @@
 | シリアライゼーション | kotlinx.serialization |
 | ストレージ | DataStore Preferences |
 | 認証 | Credential Manager (Google Sign-In) |
-| バックエンド | mem0 Cloud API |
+| 記憶エンジン | Letta（セルフホスト） |
 
 ## セットアップ
 
@@ -46,18 +47,13 @@ cd memly
 
 ```properties
 sdk.dir=/path/to/Android/sdk
-MEM0_API_KEY=your_mem0_api_key
 GOOGLE_WEB_CLIENT_ID=your_google_web_client_id
 
-# 記憶バックエンドの切り替え（省略時は mem0）
-MEMORY_BACKEND=mem0
-# MEMORY_BACKEND=letta のときに使用
 LETTA_BASE_URL=http://100.x.x.x:8283
 LETTA_AGENT_ID=agent-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 # LETTA_TOKEN=  # Letta Cloud を使う場合のみ
 ```
 
-- **mem0 API キー** → [app.mem0.ai](https://app.mem0.ai) で取得
 - **Google Web Client ID** → [Google Cloud Console](https://console.cloud.google.com/) で OAuth 2.0 クライアント ID（ウェブアプリケーション）を作成
 
 ### 3. Google Cloud Console に Android アプリを登録
@@ -78,20 +74,20 @@ keytool -keystore ~/.android/debug.keystore -list -v \
 ./gradlew installDebug
 ```
 
-## 記憶バックエンド
+## 記憶の作り
 
-記憶の保存先は `MEMORY_BACKEND` で差し替えられる。UI・ViewModel は
-`data/memory/MemoryBackend` インターフェース越しにしか記憶を触らない。
+memly は記憶を自分で操作しない。ユーザーの入力はそのままエージェントへのメッセージとして送られ、
+エージェントが `memory_replace` / `archival_memory_insert` などを自分で選んで記憶を書き換える。
 
-| | mem0（クラウド） | Letta（セルフホスト） |
-|---|---|---|
-| 一覧 / 検索 / 追加 / 削除 | ✅ | ✅ |
-| 編集（id 指定の更新） | ✅ | ❌ API 自体が無い |
-| 保存先 | mem0 の memories | エージェントの archival memory (passages) |
-| 認証 | API キー | 不要（セルフホスト） |
+| 画面 | やっていること |
+|---|---|
+| ホーム「記憶する」 | `POST /v1/agents/{id}/messages`。返事と、エージェントが行った記憶操作を表示 |
+| 記憶に聞く | 同じく `messages`。エージェントが自分の記憶を検索して答える |
+| 私の人物像 | `GET /core-memory/blocks`。human / persona を表示 |
+| 長期記憶を見る | `GET /archival-memory`。溜まった passage の閲覧と削除 |
 
-Letta を選ぶと、更新 API が存在しないため記憶一覧の編集ボタンは自動的に非表示になる
-（`MemoryBackend.supportsEdit`）。
+記憶の**編集**機能は持たない。Letta の archival memory に更新 API が無いこともあるが、
+本質的には「どう書き換えるか」をエージェントに任せる設計だから。直したいときは話しかける。
 
 ### Letta 側の準備
 
@@ -108,20 +104,20 @@ docker run -d --name letta-server \
 curl http://localhost:8283/v1/agents/   # LETTA_AGENT_ID を確認
 ```
 
-スマホから自宅の Letta に繋ぐには Tailscale を Mac と端末の両方に入れ、
-`LETTA_BASE_URL` に Mac の Tailscale IP を指定する。平文 HTTP になるため
-`usesCleartextTraffic` を有効にしてある。
+エミュレータからホストの Letta を見る場合は `LETTA_BASE_URL=http://10.0.2.2:8283`。
+実機から自宅の Letta に繋ぐには Tailscale を Mac と端末の両方に入れ、Mac の Tailscale IP を指定する。
+平文 HTTP になるため `usesCleartextTraffic` を有効にしてある。
 
 ### mem0 からの移行
+
+以前は mem0 を使っていた。既存の記憶は archival memory へ直接書かず、
+エージェントへのメッセージとして送って取捨選択・要約させる。既定はドライラン。
 
 ```bash
 export MEM0_API_KEY=...
 python3 scripts/migrate_mem0_to_letta.py --user-id <id> --agent-id <agent-id> --limit 5
 python3 scripts/migrate_mem0_to_letta.py --user-id <id> --agent-id <agent-id> --apply
 ```
-
-既存記憶を archival memory へ直接書かず、エージェントへのメッセージとして送って
-取捨選択・要約させる。既定はドライラン。
 
 ## ライセンス
 

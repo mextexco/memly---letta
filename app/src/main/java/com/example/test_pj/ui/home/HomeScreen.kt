@@ -88,13 +88,14 @@ import java.util.Locale
 @Composable
 fun HomeScreen(
     onNavigateToMemories: () -> Unit,
+    onNavigateToAsk: () -> Unit,
+    onNavigateToCoreMemory: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val inputText by viewModel.inputText.collectAsStateWithLifecycle()
     val userInfo by viewModel.userInfo.collectAsStateWithLifecycle()
-    val memoryCount by viewModel.memoryCount.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -187,7 +188,7 @@ fun HomeScreen(
                         )
                     }
                     Text(
-                        text = if (memoryCount != null) "記憶: ${memoryCount}件" else "読み込み中...",
+                        text = "記憶はエージェントが管理",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontFamily = FontFamily.Monospace,
@@ -284,15 +285,15 @@ fun HomeScreen(
                         }
                     }
                     Button(
-                        onClick = viewModel::saveMemory,
-                        enabled = inputText.isNotBlank() && uiState !is HomeUiState.Saving,
+                        onClick = viewModel::remember,
+                        enabled = inputText.isNotBlank() && uiState !is HomeUiState.Thinking,
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                         ),
                     ) {
-                        if (uiState is HomeUiState.Saving) {
+                        if (uiState is HomeUiState.Thinking) {
                             CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
                         } else {
                             Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.size(18.dp))
@@ -306,10 +307,16 @@ fun HomeScreen(
         Spacer(Modifier.height(12.dp))
 
         when (val s = uiState) {
-            is HomeUiState.Saved -> Text(
-                s.message, color = MaterialTheme.colorScheme.primary,
-                fontFamily = FontFamily.Monospace, fontSize = 14.sp,
+            is HomeUiState.Thinking -> Text(
+                "エージェントが考えている...", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontFamily = FontFamily.Monospace, fontSize = 13.sp,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
+            )
+            // 「保存しました」ではなく、エージェントが実際に何をしたかをそのまま出す
+            is HomeUiState.Answered -> AgentReply(
+                reply = s.reply,
+                actions = s.actions,
+                onDismiss = viewModel::dismissResult,
             )
             is HomeUiState.Error -> Text(
                 "⚠ ${s.message}", color = MaterialTheme.colorScheme.error,
@@ -328,7 +335,29 @@ fun HomeScreen(
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
         ) {
             Icon(Icons.Default.AccessTime, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-            Text("  過去の記憶を見る", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)
+            Text("  長期記憶を見る", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace)
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        Row(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onNavigateToAsk,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+            ) {
+                Text("記憶に聞く", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(
+                onClick = onNavigateToCoreMemory,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(12.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+            ) {
+                Text("私の人物像", color = MaterialTheme.colorScheme.primary, fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            }
         }
     }
 
@@ -472,4 +501,50 @@ private fun Context.findActivity(): Activity? {
         ctx = ctx.baseContext
     }
     return null
+}
+
+/**
+ * エージェントの返事と、その過程で自分の判断で行った記憶操作を表示する。
+ *
+ * mem0 では「保存しました」としか言えなかったところ、Letta では
+ * 統合したのか新規に書いたのかまで分かるので、それをそのまま見せる。
+ */
+@Composable
+private fun AgentReply(
+    reply: String,
+    actions: List<com.example.test_pj.data.letta.MemoryAction>,
+    onDismiss: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            if (reply.isNotBlank()) {
+                Text(
+                    reply,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 14.sp,
+                    lineHeight = 21.sp,
+                )
+            }
+            if (actions.isNotEmpty()) {
+                Spacer(Modifier.height(10.dp))
+                actions.forEach { action ->
+                    Text(
+                        "› ${action.label}",
+                        color = MaterialTheme.colorScheme.primary,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                Text("閉じる", color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+            }
+        }
+    }
 }

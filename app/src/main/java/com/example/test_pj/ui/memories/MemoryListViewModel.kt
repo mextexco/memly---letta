@@ -1,19 +1,12 @@
 package com.example.test_pj.ui.memories
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.test_pj.data.memory.MemoryBackends
 import com.example.test_pj.data.memory.MemoryItem
-import com.example.test_pj.data.user.UserRepository
-import kotlinx.coroutines.FlowPreview
+import com.example.test_pj.data.memory.MemoryRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 sealed interface MemoryListUiState {
@@ -22,24 +15,18 @@ sealed interface MemoryListUiState {
     data class Error(val message: String) : MemoryListUiState
 }
 
-@OptIn(FlowPreview::class)
-class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
+/**
+ * 溜まった長期記憶（archival memory）を眺めて消すだけの画面。
+ *
+ * 検索は「記憶に聞く」画面でエージェントにやらせるのでここには置かない。
+ * 編集も Letta に更新 API が無く、書き換えはエージェントに任せる方針なので持たない。
+ */
+class MemoryListViewModel : ViewModel() {
 
-    private val backend = MemoryBackends.current
-    private val userRepository = UserRepository(app)
-
-    /** バックエンドが編集に対応しているか。UI 側の編集ボタン表示に使う。 */
-    val supportsEdit: Boolean = backend.supportsEdit
+    private val memory = MemoryRepository.instance
 
     private val _uiState = MutableStateFlow<MemoryListUiState>(MemoryListUiState.Loading)
     val uiState: StateFlow<MemoryListUiState> = _uiState.asStateFlow()
-
-    private val _searchQuery = MutableStateFlow("")
-    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
-
-    // 編集・削除ダイアログ制御
-    private val _editingMemory = MutableStateFlow<MemoryItem?>(null)
-    val editingMemory: StateFlow<MemoryItem?> = _editingMemory.asStateFlow()
 
     private val _deletingMemory = MutableStateFlow<MemoryItem?>(null)
     val deletingMemory: StateFlow<MemoryItem?> = _deletingMemory.asStateFlow()
@@ -47,46 +34,26 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
     private val _actionError = MutableStateFlow<String?>(null)
     val actionError: StateFlow<String?> = _actionError.asStateFlow()
 
-    init {
-        loadMemories()
-        // drop(1) で初期値（空文字）をスキップし、ユーザー入力のみに反応する
-        viewModelScope.launch {
-            _searchQuery.drop(1).debounce(500).collectLatest { query ->
-                if (query.isBlank()) loadMemories() else searchMemories(query)
-            }
-        }
-    }
-
-    fun onSearchQueryChange(query: String) { _searchQuery.value = query }
+    init { refresh() }
 
     fun refresh() {
-        if (_searchQuery.value.isBlank()) loadMemories() else searchMemories(_searchQuery.value)
-    }
-
-    // ── 編集 ───────────────────────────────────────
-    fun startEdit(memory: MemoryItem) { _editingMemory.value = memory }
-    fun cancelEdit() { _editingMemory.value = null }
-
-    fun confirmEdit(id: String, newText: String) {
         viewModelScope.launch {
+            _uiState.value = MemoryListUiState.Loading
             try {
-                backend.update(id, newText)
-                _editingMemory.value = null
-                refresh()
+                _uiState.value = MemoryListUiState.Success(memory.archivedMemories())
             } catch (e: Exception) {
-                _actionError.value = "編集失敗: ${e.message}"
+                _uiState.value = MemoryListUiState.Error(e.message ?: "読み込み失敗")
             }
         }
     }
 
-    // ── 削除 ───────────────────────────────────────
-    fun startDelete(memory: MemoryItem) { _deletingMemory.value = memory }
+    fun startDelete(item: MemoryItem) { _deletingMemory.value = item }
     fun cancelDelete() { _deletingMemory.value = null }
 
     fun confirmDelete(id: String) {
         viewModelScope.launch {
             try {
-                backend.delete(id)
+                memory.deleteArchived(id)
                 _deletingMemory.value = null
                 refresh()
             } catch (e: Exception) {
@@ -96,29 +63,4 @@ class MemoryListViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun clearActionError() { _actionError.value = null }
-
-    // ── プライベート ───────────────────────────────
-    private fun loadMemories() {
-        viewModelScope.launch {
-            _uiState.value = MemoryListUiState.Loading
-            try {
-                val userId = userRepository.userInfo.first().mem0UserId
-                _uiState.value = MemoryListUiState.Success(backend.list(userId))
-            } catch (e: Exception) {
-                _uiState.value = MemoryListUiState.Error(e.message ?: "読み込み失敗")
-            }
-        }
-    }
-
-    private fun searchMemories(query: String) {
-        viewModelScope.launch {
-            _uiState.value = MemoryListUiState.Loading
-            try {
-                val userId = userRepository.userInfo.first().mem0UserId
-                _uiState.value = MemoryListUiState.Success(backend.search(query, userId))
-            } catch (e: Exception) {
-                _uiState.value = MemoryListUiState.Error(e.message ?: "検索失敗")
-            }
-        }
-    }
 }

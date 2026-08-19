@@ -3,30 +3,30 @@ package com.example.test_pj.ui.home
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.test_pj.data.memory.MemoryBackends
+import com.example.test_pj.data.letta.MemoryAction
+import com.example.test_pj.data.memory.MemoryRepository
 import com.example.test_pj.data.user.UserInfo
 import com.example.test_pj.data.user.UserRepository
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 sealed interface HomeUiState {
     data object Idle : HomeUiState
-    data object Saving : HomeUiState
-    data class Saved(val message: String) : HomeUiState
+    /** エージェントが考えている間。数秒かかるので専用の状態にしている。 */
+    data object Thinking : HomeUiState
+    /** エージェントの返事と、その過程で自分で決めた記憶操作。 */
+    data class Answered(val reply: String, val actions: List<MemoryAction>) : HomeUiState
     data class Error(val message: String) : HomeUiState
 }
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val memories = MemoryBackends.current
+    private val memory = MemoryRepository.instance
     private val userRepository = UserRepository(app)
 
     val userInfo: StateFlow<UserInfo> = userRepository.userInfo
@@ -38,25 +38,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     private val _inputText = MutableStateFlow("")
     val inputText: StateFlow<String> = _inputText.asStateFlow()
 
-    private val _memoryCount = MutableStateFlow<Int?>(null)
-    val memoryCount: StateFlow<Int?> = _memoryCount.asStateFlow()
-
     private var voiceBaseText = ""
-
-    init {
-        // userId が確定してから（DataStore 読み込み後）カウントを取得。
-        // userId 変化（サインイン・サインアウト）にも自動対応。
-        viewModelScope.launch {
-            userRepository.userInfo
-                .map { it.mem0UserId }
-                .distinctUntilChanged()
-                .collect { userId ->
-                    try {
-                        _memoryCount.value = memories.list(userId).size
-                    } catch (_: Exception) {}
-                }
-        }
-    }
 
     // ── テキスト入力 ──────────────────────────────
     fun onTextChange(text: String) {
@@ -81,33 +63,31 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         voiceBaseText = ""
     }
 
-    // ── 記憶保存 ──────────────────────────────────
-    fun saveMemory() {
+    // ── 記憶させる ────────────────────────────────
+    /**
+     * エージェントに話しかける。何をどう覚えるかはエージェントが決めるので、
+     * memly 側は結果を受け取って伝えるだけ。
+     */
+    fun remember() {
         val text = _inputText.value.trim()
         if (text.isEmpty()) return
-        val userId = userInfo.value.mem0UserId
         viewModelScope.launch {
-            _uiState.value = HomeUiState.Saving
+            _uiState.value = HomeUiState.Thinking
             try {
-                val categorized = memories.add(text, userId)
+                val turn = memory.remember(text)
                 _inputText.value = ""
-                // カウントを即時更新（FlowはuserIdが変化しないと再発火しないため手動で取得）
-                try { _memoryCount.value = memories.list(userId).size } catch (_: Exception) {}
-                _uiState.value = HomeUiState.Saved(if (categorized) "記憶しました ✓" else "記憶しました ✓（分類は未対応）")
-                delay(2500)
-                _uiState.value = HomeUiState.Idle
+                _uiState.value = HomeUiState.Answered(turn.reply, turn.memoryActions)
             } catch (e: Exception) {
                 _uiState.value = HomeUiState.Error(e.message ?: "エラーが発生しました")
             }
         }
     }
 
+    fun dismissResult() { _uiState.value = HomeUiState.Idle }
+
     // ── ユーザー ──────────────────────────────────
     fun onGoogleSignInSuccess(credential: GoogleIdTokenCredential) {
-        viewModelScope.launch {
-            userRepository.saveGoogleUser(credential)
-            // カウント更新は userId Flow の変化で自動トリガーされる
-        }
+        viewModelScope.launch { userRepository.saveGoogleUser(credential) }
     }
 
     fun onGoogleSignInError(message: String) {
@@ -119,9 +99,6 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun signOut() {
-        viewModelScope.launch {
-            userRepository.signOut()
-            // カウント更新は userId Flow の変化で自動トリガーされる
-        }
+        viewModelScope.launch { userRepository.signOut() }
     }
 }

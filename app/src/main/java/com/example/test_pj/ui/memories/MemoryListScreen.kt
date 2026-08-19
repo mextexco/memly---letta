@@ -59,8 +59,6 @@ fun MemoryListScreen(
     viewModel: MemoryListViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val editingMemory by viewModel.editingMemory.collectAsStateWithLifecycle()
     val deletingMemory by viewModel.deletingMemory.collectAsStateWithLifecycle()
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
 
@@ -90,7 +88,7 @@ fun MemoryListScreen(
         if (uiState is MemoryListUiState.Success) {
             val count = (uiState as MemoryListUiState.Success).memories.size
             Text(
-                text = if (searchQuery.isBlank()) "合計 ${count}件" else "検索結果: ${count}件",
+                text = "合計 ${count}件",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(start = 8.dp),
@@ -98,30 +96,6 @@ fun MemoryListScreen(
         }
 
         Spacer(Modifier.height(8.dp))
-
-        // 検索バー
-        TextField(
-            value = searchQuery,
-            onValueChange = viewModel::onSearchQueryChange,
-            placeholder = {
-                Text("記憶を検索...", color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-            },
-            leadingIcon = {
-                Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                cursorColor = MaterialTheme.colorScheme.primary,
-            ),
-            singleLine = true,
-        )
 
         Spacer(Modifier.height(12.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
@@ -145,7 +119,7 @@ fun MemoryListScreen(
                 if (s.memories.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            if (searchQuery.isBlank()) "まだ記憶がありません" else "「$searchQuery」に一致する記憶がありません",
+                            "まだ長期記憶がありません",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace, fontSize = 14.sp,
                         )
@@ -155,8 +129,6 @@ fun MemoryListScreen(
                         items(s.memories, key = { it.id }) { memory ->
                             MemoryCard(
                                 memory = memory,
-                                canEdit = viewModel.supportsEdit,
-                                onEdit = { viewModel.startEdit(memory) },
                                 onDelete = { viewModel.startDelete(memory) },
                             )
                         }
@@ -164,44 +136,6 @@ fun MemoryListScreen(
                 }
             }
         }
-    }
-
-    // ── 編集ダイアログ ─────────────────────────────
-    editingMemory?.let { memory ->
-        var editText by remember(memory.id) { mutableStateOf(memory.text) }
-        AlertDialog(
-            onDismissRequest = viewModel::cancelEdit,
-            containerColor = MaterialTheme.colorScheme.surface,
-            title = { Text("記憶を編集", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary) },
-            text = {
-                OutlinedTextField(
-                    value = editText,
-                    onValueChange = { editText = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                    ),
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.confirmEdit(memory.id, editText) },
-                    enabled = editText.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                ) {
-                    Text("保存", color = MaterialTheme.colorScheme.onPrimary, fontFamily = FontFamily.Monospace)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::cancelEdit) {
-                    Text("キャンセル", color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                }
-            },
-        )
     }
 
     // ── 削除確認ダイアログ ─────────────────────────
@@ -251,7 +185,7 @@ fun MemoryListScreen(
 }
 
 @Composable
-private fun MemoryCard(memory: MemoryItem, canEdit: Boolean, onEdit: () -> Unit, onDelete: () -> Unit) {
+private fun MemoryCard(memory: MemoryItem, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -274,17 +208,8 @@ private fun MemoryCard(memory: MemoryItem, canEdit: Boolean, onEdit: () -> Unit,
                     if (memory.createdAt.isNotBlank()) {
                         Text(formatDate(memory.createdAt), color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace, fontSize = 11.sp)
                     }
-                    if (memory.score != null) {
-                        Text("関連度: ${"%.0f".format(memory.score * 100)}%", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-                    }
                 }
                 Row {
-                    // 更新 API を持たないバックエンド（Letta）では編集ボタンを出さない
-                    if (canEdit) {
-                        IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Default.Edit, "編集", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
-                        }
-                    }
                     IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
                         Icon(Icons.Default.Delete, "削除", tint = ErrorRed.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
                     }
@@ -294,6 +219,18 @@ private fun MemoryCard(memory: MemoryItem, canEdit: Boolean, onEdit: () -> Unit,
     }
 }
 
+/**
+ * Letta が返す UTC の ISO 8601 を端末のタイムゾーンで表示する。
+ * 以前は文字列を切っているだけで、JST の 10:57 が 01:57 と出ていた。
+ */
 private fun formatDate(isoDate: String): String = try {
+    val instant = java.time.Instant.parse(
+        if (isoDate.endsWith("Z") || isoDate.contains('+')) isoDate else isoDate + "Z"
+    )
+    java.time.format.DateTimeFormatter
+        .ofPattern("yyyy-MM-dd HH:mm")
+        .withZone(java.time.ZoneId.systemDefault())
+        .format(instant)
+} catch (_: Exception) {
     isoDate.replace("T", " ").take(16)
-} catch (_: Exception) { isoDate }
+}
