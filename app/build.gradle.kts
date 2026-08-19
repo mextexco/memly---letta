@@ -15,7 +15,9 @@ android {
     namespace = "com.example.test_pj"
     compileSdk = 36
     defaultConfig {
-        applicationId = "com.example.test_pj"
+        // 旧 mem0 版 memly (com.example.test_pj) と別アプリとして併存させるため ID を分ける。
+        // namespace（コード上のパッケージ）は変えていないので import には影響しない。
+        applicationId = "com.example.memly_letta"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

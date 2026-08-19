@@ -215,7 +215,7 @@ fun HomeScreen(
         Spacer(Modifier.height(6.dp))
 
         Text(
-            text = "Memly",
+            text = "memly-letta",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
