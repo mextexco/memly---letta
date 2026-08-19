@@ -24,6 +24,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,6 +59,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import com.example.test_pj.data.user.UserInfo
 import androidx.compose.runtime.getValue
@@ -66,6 +69,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
@@ -94,6 +98,12 @@ fun HomeScreen(
     viewModel: HomeViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // 返答が届いたらキーボードを下げる。出したままだと返答の表示領域が数行に潰れる。
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(uiState) {
+        if (uiState is HomeUiState.Answered) keyboardController?.hide()
+    }
     val inputText by viewModel.inputText.collectAsStateWithLifecycle()
     val userInfo by viewModel.userInfo.collectAsStateWithLifecycle()
 
@@ -214,9 +224,31 @@ fun HomeScreen(
 
         Spacer(Modifier.height(8.dp))
 
+        // ── エージェントの返答 ────────────────────
+        // 返答は長さが読めないので、残り空間に収めてこの中でスクロールさせる。
+        // 以前は高さ無制限に伸ばしていたため、入力欄と下のボタンが画面外に押し出されていた。
+        val answered = uiState as? HomeUiState.Answered
+        if (answered != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                AgentReply(
+                    reply = answered.reply,
+                    actions = answered.actions,
+                    onDismiss = viewModel::dismissResult,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+        }
+
         // ── 入力カード ────────────────────────────
+        // 返答が出ている間は高さを固定する。weight のままだと残り空間を奪われて潰れる。
         Card(
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = if (answered != null) Modifier.fillMaxWidth().height(190.dp)
+                       else Modifier.fillMaxWidth().weight(1f),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(0.dp),
@@ -312,12 +344,8 @@ fun HomeScreen(
                 fontFamily = FontFamily.Monospace, fontSize = 13.sp,
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
-            // 「保存しました」ではなく、エージェントが実際に何をしたかをそのまま出す
-            is HomeUiState.Answered -> AgentReply(
-                reply = s.reply,
-                actions = s.actions,
-                onDismiss = viewModel::dismissResult,
-            )
+            // 返答は入力カードの上に表示済み
+            is HomeUiState.Answered -> Unit
             is HomeUiState.Error -> Text(
                 "⚠ ${s.message}", color = MaterialTheme.colorScheme.error,
                 fontFamily = FontFamily.Monospace, fontSize = 13.sp,
