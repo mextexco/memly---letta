@@ -1,6 +1,10 @@
 package com.example.test_pj.ui.memories
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
@@ -63,6 +68,7 @@ fun MemoryListScreen(
     val actionError by viewModel.actionError.collectAsStateWithLifecycle()
     val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
     val loadingMore by viewModel.loadingMore.collectAsStateWithLifecycle()
+    val query by viewModel.query.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -87,10 +93,12 @@ fun MemoryListScreen(
         }
 
         // 件数バッジ
+        val loaded = (uiState as? MemoryListUiState.Success)?.memories.orEmpty()
+        val shown = loaded.filter { it.matches(query) }
         if (uiState is MemoryListUiState.Success) {
-            val count = (uiState as MemoryListUiState.Success).memories.size
+            val total = if (hasMore) "読み込み済み ${loaded.size}件" else "合計 ${loaded.size}件"
             Text(
-                text = if (hasMore) "読み込み済み ${count}件" else "合計 ${count}件",
+                text = if (query.isBlank()) total else "${shown.size}件ヒット（$total）",
                 fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(start = 8.dp),
@@ -98,6 +106,23 @@ fun MemoryListScreen(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        // 絞り込み（本文・タグ）
+        OutlinedTextField(
+            value = query,
+            onValueChange = viewModel::setQuery,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            placeholder = { Text("絞り込み（本文・タグ）", fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = MaterialTheme.colorScheme.primary) },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { viewModel.setQuery("") }) {
+                        Icon(Icons.Default.Close, "クリア", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            },
+        )
 
         Spacer(Modifier.height(12.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
@@ -118,19 +143,20 @@ fun MemoryListScreen(
             }
 
             is MemoryListUiState.Success -> {
-                if (s.memories.isEmpty()) {
+                if (shown.isEmpty()) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            "まだ長期記憶がありません",
+                            if (query.isBlank()) "まだ長期記憶がありません" else "読み込み済みの記憶に該当なし",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontFamily = FontFamily.Monospace, fontSize = 14.sp,
                         )
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(s.memories, key = { it.id }) { memory ->
+                        items(shown, key = { it.id }) { memory ->
                             MemoryCard(
                                 memory = memory,
+                                onTagClick = viewModel::setQuery,
                                 onDelete = { viewModel.startDelete(memory) },
                             )
                         }
@@ -192,8 +218,9 @@ fun MemoryListScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MemoryCard(memory: MemoryItem, onDelete: () -> Unit) {
+private fun MemoryCard(memory: MemoryItem, onTagClick: (String) -> Unit, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -207,6 +234,22 @@ private fun MemoryCard(memory: MemoryItem, onDelete: () -> Unit) {
                 fontFamily = FontFamily.Monospace,
                 fontSize = 14.sp, lineHeight = 22.sp,
             )
+            if (memory.tags.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    memory.tags.forEach { tag ->
+                        Text(
+                            tag,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                            modifier = Modifier
+                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                .clickable { onTagClick(tag) }
+                                .padding(horizontal = 6.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -263,4 +306,9 @@ private fun LoadMoreButton(loading: Boolean, onClick: () -> Unit) {
             }
         }
     }
+}
+
+private fun MemoryItem.matches(query: String): Boolean {
+    val q = query.trim()
+    return q.isEmpty() || text.contains(q, ignoreCase = true) || tags.any { it.contains(q, ignoreCase = true) }
 }

@@ -22,6 +22,7 @@ data class Passage(
     val id: String = "",
     val text: String = "",
     @SerialName("created_at") val createdAt: String = "",
+    val tags: List<String>? = null,
 )
 
 /** GET /v1/agents/{id}/archival-memory/search の結果要素。一覧とはフィールド名が異なる。 */

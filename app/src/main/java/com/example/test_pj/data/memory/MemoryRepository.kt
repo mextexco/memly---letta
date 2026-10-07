@@ -10,6 +10,7 @@ data class MemoryItem(
     val id: String,
     val text: String,
     val createdAt: String = "",
+    val tags: List<String> = emptyList(),
 )
 
 /**
@@ -36,7 +37,7 @@ class MemoryRepository(private val api: LettaApi) {
      * 続きは前ページ末尾の id を [before] に渡す。全件取得しないのは 1 件約 40KB あるため。
      */
     suspend fun archivedMemories(before: String? = null): List<MemoryItem> =
-        api.listPassages(before = before).map { MemoryItem(id = it.id, text = it.text, createdAt = it.createdAt) }
+        api.listPassages(before = before).map { MemoryItem(id = it.id, text = it.text, createdAt = it.createdAt, tags = it.tags.orEmpty()) }
 
     /** 1 ページの件数。UI 側が「まだ続きがあるか」を判断するのに使う。 */
     val pageSize: Int get() = LettaApi.PAGE_SIZE

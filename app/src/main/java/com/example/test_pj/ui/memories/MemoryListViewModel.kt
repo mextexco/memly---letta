@@ -21,7 +21,7 @@ sealed interface MemoryListUiState {
  * 一覧は 1 ページずつ読む。Letta は passage に埋め込みベクトルを含めて返し除外できないため、
  * 1 件約 40KB あり、全件取得すると 92 件で 3.7MB になってモバイルでは実用にならない。
  *
- * 検索は「記憶に聞く」画面でエージェントにやらせるのでここには置かない。
+ * 絞り込みは読み込み済みの分だけを端末内で行う。意味検索は「記憶に聞く」画面でエージェントにやらせる。
  * 編集も Letta に更新 API が無く、書き換えはエージェントに任せる方針なので持たない。
  */
 class MemoryListViewModel : ViewModel() {
@@ -38,6 +38,12 @@ class MemoryListViewModel : ViewModel() {
     /** まだ続きがあるか。最後のページが 1 ページ分に満たなければ終端とみなす。 */
     private val _hasMore = MutableStateFlow(false)
     val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+
+    /** 絞り込み語。読み込み済みの本文とタグだけを対象にする（サーバー検索はしない）。 */
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
+
+    fun setQuery(q: String) { _query.value = q }
 
     private val _deletingMemory = MutableStateFlow<MemoryItem?>(null)
     val deletingMemory: StateFlow<MemoryItem?> = _deletingMemory.asStateFlow()
