@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
 """ローカルLettaの記憶ビューア。 python3 scripts/viewer.py → http://localhost:8290
 CORS回避のため /v1 を LETTA_BASE_URL へ中継する（GETのみ・embeddingは除去）。"""
-import json, os, urllib.request
+import json, os, sys, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = os.environ.get("LETTA_BASE_URL", "http://localhost:8283")
 AGENT = os.environ.get("LETTA_AGENT_ID", "agent-2220d8b9-bcb8-410d-bea4-f572bc2b3dfb")
 PORT = int(os.environ.get("VIEWER_PORT", "8290"))
+
+G, D, R = "\033[38;5;46m", "\033[2m", "\033[0m"
+BANNER = r"""
+ _     _____ _____ _____  _
+| |   | ____|_   _|_   _|/ \
+| |   |  _|   | |   | | / _ \
+| |___| |___  | |   | |/ ___ \
+|_____|_____| |_|   |_/_/   \_\
+"""
 
 HTML = """<!doctype html><html lang=ja><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>Letta Memory</title>
@@ -87,5 +96,10 @@ class H(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"http://localhost:{PORT}  -> {BASE}")
+    sys.stdout.reconfigure(line_buffering=True)
+    print(f"{G}{BANNER}{R}")
+    print(f"{G}  Letta 記憶ビューア（読み取り専用）{R}")
+    print(f"{D}  中継先: {BASE}{R}")
+    print(f"  開く → {G}http://localhost:{PORT}{R}")
+    print(f"{D}  停止: Ctrl+C{R}\n")
     ThreadingHTTPServer(("127.0.0.1", PORT), H).serve_forever()
